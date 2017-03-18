@@ -360,7 +360,23 @@ vector<double> Network::cost_derivative(vector<double> output,
 
 
 
+
+#include "Eigen/Dense"
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
+
 int main(){
+  MatrixXd m(3,3);
+  m<<1,2,3,4,5,6,7,8,9;
+  std::cout << m << std::endl;
+  VectorXd v(3);
+  v<<1,2,3;
+  cout<<v<<endl;
+  cout<<m*v<<endl;
+    
+
+  return 0;
 
   Network A({3,2,1});
   //  A.PrintWeights();
@@ -378,6 +394,17 @@ int main(){
       cout<<j <<" ";
     }
     cout<<endl;
+  }
+
+  cout<<"============"<<endl;
+  for (int i=0;i<nabla_w.size();i++){
+    cout<<"layer "<<i <<endl;
+    for (auto j : nabla_w[i]){
+      for (auto k : j){
+	cout<<k<<" ";
+      }
+      cout<<endl;
+    }
   }
 
 
