@@ -25,6 +25,7 @@ using namespace std;
 class Network{
 public:
   Network(vector <int>);
+  ~Network();
   double Sigmoid(double);
   double Sigmoid_Prime(double);
 
@@ -45,6 +46,7 @@ public:
 
   vector<double> cost_derivative(vector<double> output,
 				 vector<double> y);
+  
 private:
   int rNumberLayers;
   vector <int> rSizes;
@@ -55,9 +57,9 @@ Network::Network(vector <int> sizes){
   rSizes=sizes;
   //The number of layers will exclude the input layer
   rNumberLayers=sizes.size()-1;
-
+  
   biases.resize(rNumberLayers);
-  for (int i=0;i<rNumberLayers+1;i++){
+  for (int i=0;i<rNumberLayers;i++){
     //Initialize all the biases to 0
     biases[i].resize(sizes[i],1);
   }
@@ -71,6 +73,27 @@ Network::Network(vector <int> sizes){
     }
   }
 }
+
+
+
+Network::~Network(){
+  for (auto i : weights){
+    for (auto j : i){
+      j.clear();
+    }
+    i.clear();
+  }
+  for (auto i : biases){
+      i.clear();
+  }
+  weights.clear();
+  biases.clear();
+  
+  
+  //  cin.get();
+
+}
+
 
 double Network::Sigmoid(double z){
   return 1.0/(1.0+exp(-z));
