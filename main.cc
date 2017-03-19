@@ -18,6 +18,12 @@
 #include <string>
 #include <iostream>
 #include <assert.h>
+#include <utility>
+#include <algorithm>
+#include <random>
+
+#include <fstream>
+
 
 #include "Eigen/Dense"
 using Eigen::MatrixXd;
@@ -55,6 +61,14 @@ class Network{
 public:
   Network(vector <int>);
   ~Network();
+
+  void SGD(vector <pair<VectorXd,VectorXd> > data,
+	   int epochs, int mini_batch_size,double eta,int num=-1);
+
+  void UpdateMiniBatch(vector <pair<VectorXd,VectorXd> > data,
+		       vector <VectorXd>&,
+		       vector <MatrixXd>&);
+
   double Sigmoid(double);
   double Sigmoid_Prime(double);
 
@@ -66,6 +80,7 @@ public:
 
   vector <int> sizes;
   VectorXd FeedFoward(vector<double>);
+  VectorXd FeedFoward(VectorXd);
   void PrintWeights();
   vector <double> DotWwithX(int layer,
 			    const vector <double> & vec);
@@ -107,7 +122,8 @@ Network::Network(vector <int> sizes){
   
   biases2.resize(rNumberLayers);
   for (int i=0;i<rNumberLayers;i++){
-    biases2[i]=VectorXd::Constant(sizes[i+1],1);
+    //    biases2[i]=VectorXd::Constant(sizes[i+1],1);
+    biases2[i]=VectorXd::Random(sizes[i+1]);
   }
   weights2.resize(rNumberLayers);
   for (int i=0;i<weights2.size();i++){
@@ -119,7 +135,8 @@ Network::Network(vector <int> sizes){
     // so that the when you multiply it with a 3 component vector 
     // you arrive at a 2 component vector which is what the next layer
     // is 
-    weights2[i]=MatrixXd::Constant(sizes[i+1],sizes[i],1);
+    //    weights2[i]=MatrixXd::Constant(sizes[i+1],sizes[i],1);
+    weights2[i]=MatrixXd::Random(sizes[i+1],sizes[i]);
   }
 
 
@@ -158,6 +175,106 @@ Network::~Network(){
   //  cin.get();
 
 }
+
+
+
+
+
+
+void Network::SGD(vector < pair < VectorXd,VectorXd > > data,
+		  int epochs, int mini_batch_size,double eta,int num){
+
+  int numData = data.size();
+  if (num!=-1){
+    numData=num;
+  }
+
+  for (int i=0;i<epochs;i++){
+    std::random_shuffle ( data.begin(), data.end() );
+    
+    for (int j=0;j<numData/mini_batch_size;j++){
+
+
+      int offset = j*mini_batch_size;
+      vector <pair<VectorXd,VectorXd> > mini_batch(data.begin()+offset,
+						   data.begin()+offset+mini_batch_size);
+
+      vector <VectorXd> nabla_b;
+      vector <MatrixXd> nabla_w;
+      
+      UpdateMiniBatch(mini_batch,nabla_b,nabla_w);
+      
+      ///Now update the weights and biases in the network
+      for (int l=0;l<nabla_b.size();l++){
+	biases2[l]=biases2[l]-((eta/mini_batch_size)*nabla_b[l]);
+	weights2[l]=weights2[l]-((eta/mini_batch_size)*nabla_w[l]);
+      }
+    }
+  }
+}
+
+void Network::UpdateMiniBatch(vector <pair<VectorXd,VectorXd> > data,
+			      vector <VectorXd> &nabla_b,
+			      vector <MatrixXd> &nabla_w){
+
+  for (int i=0;i<data.size();i++){
+    vector <VectorXd> nabla_b_delta;
+    vector <MatrixXd> nabla_w_delta;
+    BackProp(data[i].first,data[i].second,
+	     nabla_b_delta,
+	     nabla_w_delta);
+    
+    if (nabla_b.size() == 0){
+      //this is the first iteration of the I loop
+      //instead of adding the delta Nabla_{b,w}s just
+      //set it.  This way the correct dimensions of everything will
+      //be there
+      nabla_b=nabla_b_delta;
+      nabla_w=nabla_w_delta;
+    }else{
+      //here we add on to the exisiting values in nabla_{b,w}
+      for (int j=0;j<nabla_b.size();j++){
+	//looping over the layers in the network;
+	nabla_b[j]=nabla_b[j]+nabla_b_delta[j];
+	nabla_w[j]=nabla_w[j]+nabla_w_delta[j];
+      }
+    }
+  }//end for over the mini batch of data 
+  
+  //leaving this function the nabla_b and nabla_w should be 
+  //ready to change the weights and biases in the network
+
+
+
+}
+
+void LoadData(vector <pair <VectorXd,VectorXd> > & data){
+
+  fstream input("./data.txt");
+  if (! input.is_open() ){
+    cout<<"NO FILE "<<endl;
+    return;
+  }
+  for (int j=0;j<50000;j++){
+    VectorXd tempInput(784);
+    VectorXd tempOutput(10);
+    double v;
+    for (int i=0;i<784;i++){
+      input>>v;
+      tempInput[i]=v;
+    }
+    string trash;
+    input>>trash;
+    for (int i=0;i<10;i++){
+      input>>v;
+      tempOutput[i]=v;
+    }
+    
+    input>>trash;
+    data.push_back(make_pair(tempInput,tempOutput));
+  }
+}
+
 
 
 double Network::Sigmoid(double z){
@@ -222,12 +339,11 @@ vector<double> Network::DotWwithXTrans(int layer,
 
 
 
-
-
 VectorXd Network::FeedFoward(vector <double> vec){
-
-  VectorXd temp=Vector2Eigen(vec);
-
+  return FeedFoward(Vector2Eigen(vec));
+}
+VectorXd Network::FeedFoward(VectorXd temp){
+  
   for (int i=0;i<rNumberLayers;i++){
     temp=weights2[i]*temp+ biases2[i];
     temp=temp.unaryExpr(&BareSigmoid);
@@ -493,6 +609,7 @@ void Network::BackProp(VectorXd inputs,
 
     delta=weights2[theLayer+1].transpose()*delta;
     delta=delta.cwiseProduct(sp);
+
     nabla_b[theLayer]=delta;
     nabla_w[theLayer]=delta*activations[theLayer].transpose();
   }
@@ -515,10 +632,35 @@ VectorXd Network::cost_derivative(VectorXd output,
 
 }
 
+int GetNumber(VectorXd vec){
+
+  double max =-999999;
+  int maxIndex=-1;
+  for (int i=0;i<vec.size();i++){
+    if (vec[i] >max){
+      max =vec[i];
+      maxIndex=i;
+    }
+  }
+  return maxIndex;
+}
 
 
 int main(){
-  
+
+
+  vector < pair <VectorXd,VectorXd> > trainingData;
+  cout<<"Loading data..."<<endl;
+  LoadData(trainingData);
+  cout<<"Done"<<endl;
+
+  for (int i=0;i<trainingData.size();i++){
+    if (trainingData[i].first.size() != 784 ){
+      cout<<"Bad entry at "<<i<<endl;
+      return -1;
+    }
+  }
+
 
   //  cout<<v1*v2.transpose()<<endl;
 
@@ -531,7 +673,25 @@ int main(){
 //   cout<<m*v<<endl;
 //   return 0;
 
-  Network A({3,2,1});
+  Network A({784,30,10});
+  //data epoch minisize eta
+
+  cout<<"Training..."<<endl;
+
+  int num=10000;
+  A.SGD(trainingData,5,30,2.0,num);
+  cout<<"Done "<<endl;
+
+  int checkSize=4000;
+  int totalRight=0;
+  for (int i=num;i<num+checkSize;i++){
+    auto ans = A.FeedFoward(trainingData[i].first);
+    if (GetNumber(trainingData[i].second) == GetNumber(ans) ){
+      totalRight++;
+    }
+  }
+  cout<<"total right "<<totalRight<<" "<<totalRight/double(checkSize)<<endl;
+  return 0;
 //   A.FeedFoward({1,2,1});
 //   return 3;
   //  A.PrintWeights();
