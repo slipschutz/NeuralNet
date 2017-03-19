@@ -18,9 +18,38 @@
 #include <string>
 #include <iostream>
 #include <assert.h>
+
+#include "Eigen/Dense"
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+using Eigen::VectorXf;
+using Eigen::Vector3d;
+using Eigen::Vector2d;
+using Eigen::Matrix;
+using Eigen::Dynamic;
+
 using namespace std;
 
 
+double BareSigmoid(double z){
+  return 1.0/(1.0+exp(-z));
+}
+
+double BareSigmoid_Prime(double z){
+  return BareSigmoid(z)*(1-BareSigmoid(z));
+}
+
+
+template <typename T>
+Matrix<T,Dynamic,1> Vector2Eigen(vector <T> in){
+
+  Matrix<T,Dynamic,1> ret(in.size());
+  for (int i=0;i<in.size();i++){
+    ret[i]=in[i];
+  }
+  return ret;
+
+}
 
 class Network{
 public:
@@ -31,22 +60,40 @@ public:
 
   vector < vector< vector < double > > > weights;
   vector < vector< double > > biases;
+
+  vector <VectorXd> biases2;
+  vector <MatrixXd> weights2;
+
   vector <int> sizes;
-  void FeedFoward(vector<double>);
+  VectorXd FeedFoward(vector<double>);
   void PrintWeights();
   vector <double> DotWwithX(int layer,
 			    const vector <double> & vec);
   vector <double> DotWwithXTrans(int layer,
 			    const vector <double> & vec);
 
+
   void BackProp(vector <double> inputs,
 		vector <double> trueAnswer,
 		vector <vector<double> > & nb,
 		vector <vector<vector<double> > >&nw);
 
+  void BackProp(vector <double> inputs,
+		vector <double> trueAnswer,
+		vector <VectorXd> & nb,
+		vector <MatrixXd> &nw);
+
+  void BackProp(VectorXd inputs,
+		VectorXd trueAnswer,
+		vector <VectorXd> & nb,
+		vector <MatrixXd> &nw);
+
+
   vector<double> cost_derivative(vector<double> output,
 				 vector<double> y);
-  
+  VectorXd cost_derivative(VectorXd output,
+			   VectorXd y);
+    
 private:
   int rNumberLayers;
   vector <int> rSizes;
@@ -58,6 +105,24 @@ Network::Network(vector <int> sizes){
   //The number of layers will exclude the input layer
   rNumberLayers=sizes.size()-1;
   
+  biases2.resize(rNumberLayers);
+  for (int i=0;i<rNumberLayers;i++){
+    biases2[i]=VectorXd::Constant(sizes[i+1],1);
+  }
+  weights2.resize(rNumberLayers);
+  for (int i=0;i<weights2.size();i++){
+    ///if the network has first layer with 3 nodes and the 
+    //second with 2 the matrix that connects them should look like
+    //                      1  1
+    //  1  1  1    not      1  1
+    //  1  1  1             1  1  
+    // so that the when you multiply it with a 3 component vector 
+    // you arrive at a 2 component vector which is what the next layer
+    // is 
+    weights2[i]=MatrixXd::Constant(sizes[i+1],sizes[i],1);
+  }
+
+
   biases.resize(rNumberLayers);
   for (int i=0;i<rNumberLayers;i++){
     //Initialize all the biases to 0
@@ -159,8 +224,18 @@ vector<double> Network::DotWwithXTrans(int layer,
 
 
 
-void Network::FeedFoward(vector <double> vec){
+VectorXd Network::FeedFoward(vector <double> vec){
 
+  VectorXd temp=Vector2Eigen(vec);
+
+  for (int i=0;i<rNumberLayers;i++){
+    temp=weights2[i]*temp+ biases2[i];
+    temp=temp.unaryExpr(&BareSigmoid);
+  }
+
+  return temp;
+
+  /*
   for (int l=0;l<rNumberLayers;l++){
     assert(vec.size()==rSizes[l]);
     //Dot the vector with the weight matrix for the first
@@ -176,7 +251,7 @@ void Network::FeedFoward(vector <double> vec){
   
   for (int i=0;i<vec.size();i++){
     cout<<vec[i]<<endl;
-  }
+  }*/
 }
 
 
@@ -348,6 +423,82 @@ void Network::BackProp(vector <double> input,
 
 }
 
+void Network::BackProp(vector <double> inputs,
+		       vector <double> trueAnswer,
+		       vector <VectorXd> & nabla_b,
+		       vector <MatrixXd> & nabla_w){
+  BackProp(Vector2Eigen(inputs),Vector2Eigen(trueAnswer),
+	   nabla_b,nabla_w);
+
+
+}
+
+
+void Network::BackProp(VectorXd inputs,
+		       VectorXd trueAnswer,
+		       vector <VectorXd> & nabla_b,
+		       vector <MatrixXd> & nabla_w){
+
+  //need to store the nabla_b's and nabla_w's
+  //these need to be the same sizes as the biases and 
+  //weight vectors
+  //  vector< vector <double> > nabla_b;
+
+  nabla_b.resize(biases.size());
+  for (int i=0;i<nabla_b.size();i++){
+    nabla_b[i]=VectorXd::Zero(biases2[i].size());
+  }
+
+  //  vector<vector<vector< double> > > nabla_w;
+  nabla_w.resize(weights.size());
+  for (int i=0;i<nabla_w.size();i++){
+    nabla_w[i]=MatrixXd::Zero(weights2[i].rows(),
+			      weights2[i].cols());
+  }
+  
+
+  
+  VectorXd  activation = inputs;
+  vector<VectorXd>  activations;
+
+  activations.push_back(activation);
+
+  vector<VectorXd> zs;
+  ///need to do similar feed foward as in the feed foward method
+  for (int l=0;l<rNumberLayers;l++){
+
+    VectorXd z = weights2[l]*activation+biases2[l];
+    zs.push_back(z);
+    activation = z.unaryExpr(&BareSigmoid);
+    activations.push_back(activation);
+  }
+
+  int sAct=activations.size();
+  VectorXd delta=cost_derivative(activations[sAct-1],trueAnswer)
+    .cwiseProduct(zs[zs.size()-1].unaryExpr(&BareSigmoid_Prime));
+
+
+
+  ///Set the vector for the last layer in nabla_b to delta
+  nabla_b[nabla_b.size()-1]=delta;
+
+  nabla_w[nabla_w.size()-1]=delta*activations[sAct-2].transpose();
+
+
+  for (int l=1;l<rNumberLayers;l++){
+    int theLayer=nabla_w.size()-1-l;
+
+    VectorXd z = zs[theLayer];
+    VectorXd sp=z.unaryExpr(&BareSigmoid_Prime);
+
+    delta=weights2[theLayer+1].transpose()*delta;
+    delta=delta.cwiseProduct(sp);
+    nabla_b[theLayer]=delta;
+    nabla_w[theLayer]=delta*activations[theLayer].transpose();
+  }
+
+}
+
 vector<double> Network::cost_derivative(vector<double> output,
 					vector<double> y){
   vector<double> ret;
@@ -356,56 +507,72 @@ vector<double> Network::cost_derivative(vector<double> output,
   }
   return ret;
 
+
+}
+VectorXd Network::cost_derivative(VectorXd output,
+					VectorXd y){
+  return output-y;
+
 }
 
 
 
-
-#include "Eigen/Dense"
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
-
-
 int main(){
-  MatrixXd m(3,3);
-  m<<1,2,3,4,5,6,7,8,9;
-  std::cout << m << std::endl;
-  VectorXd v(3);
-  v<<1,2,3;
-  cout<<v<<endl;
-  cout<<m*v<<endl;
-    
+  
 
-  return 0;
+  //  cout<<v1*v2.transpose()<<endl;
+
+//   MatrixXd m(2,3);
+//   m=MatrixXd::Constant(2,3,1);
+//   cout<<m<<endl;
+//   VectorXd v(3);
+//   v<<2,2,2;
+//   cout<<v<<endl;
+//   cout<<m*v<<endl;
+//   return 0;
 
   Network A({3,2,1});
+//   A.FeedFoward({1,2,1});
+//   return 3;
   //  A.PrintWeights();
   //  A.FeedFoward(input);
   vector<double> input={1,2,3};
   vector<double> answer={3};
 
-  vector <vector <double> > nabla_b;
-  vector <vector< vector <double> > > nabla_w;
+  vector <VectorXd> nabla_b;
+  vector <MatrixXd> nabla_w;
+
   A.BackProp(input,answer,nabla_b,nabla_w);
 
-  for ( int i=0;i<nabla_b.size();i++){
-    cout<<"For Layer "<<i<<endl;
-    for (auto j : nabla_b[i]){
-      cout<<j <<" ";
-    }
-    cout<<endl;
+  for (auto i : nabla_b){
+    cout<<i<<endl;
+    cout<<"---------"<<endl;
   }
+  cout<<"========"<<endl;
+  for (auto i: nabla_w){
+    cout<<i<<endl;
+    cout<<"---------"<<endl;
+  }    
+  return 1;
 
-  cout<<"============"<<endl;
-  for (int i=0;i<nabla_w.size();i++){
-    cout<<"layer "<<i <<endl;
-    for (auto j : nabla_w[i]){
-      for (auto k : j){
-	cout<<k<<" ";
-      }
-      cout<<endl;
-    }
-  }
+//   for ( int i=0;i<nabla_b.size();i++){
+//     cout<<"For Layer "<<i<<endl;
+//     for (auto j : nabla_b[i]){
+//       cout<<j <<" ";
+//     }
+//     cout<<endl;
+//   }
+
+//   cout<<"============"<<endl;
+//   for (int i=0;i<nabla_w.size();i++){
+//     cout<<"layer "<<i <<endl;
+//     for (auto j : nabla_w[i]){
+//       for (auto k : j){
+// 	cout<<k<<" ";
+//       }
+//       cout<<endl;
+//     }
+//   }
 
 
 
