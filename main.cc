@@ -63,6 +63,9 @@ public:
   Network(vector <int>);
   ~Network();
 
+
+  void AddInputNode();
+
   void SGD(vector <pair<VectorXd,VectorXd> > data,
 	   int epochs, int mini_batch_size,double eta,int num=-1);
 
@@ -74,7 +77,7 @@ public:
   vector <VectorXd> biases2;
   vector <MatrixXd> weights2;
 
-  vector <int> sizes;
+
   VectorXd FeedFoward(vector<double>);
   VectorXd FeedFoward(VectorXd);
 
@@ -130,11 +133,27 @@ Network::Network(vector <int> sizes){
 
 
 Network::~Network(){
-
-
+  weights2.clear();
+  biases2.clear();
+  rSizes.clear();
 }
 
 
+
+void Network::AddInputNode(){
+  
+// don't need to change the list of biases.
+//just need to change the weights to have another
+//set of connections of the new node
+//   weights2[i]=MatrixXd::Random(sizes[i+1],sizes[i]);
+
+  weights2[0].conservativeResize(weights2[0].rows(), weights2[0].cols()+1);
+
+  VectorXd vec=VectorXd::Random(rSizes[1]);
+  weights2[0].col(weights2[0].cols()-1)=vec;
+  rSizes[0]=rSizes[0]+1;
+
+}
 
 
 
@@ -201,8 +220,6 @@ void Network::UpdateMiniBatch(vector <pair<VectorXd,VectorXd> > data,
   
   //leaving this function the nabla_b and nabla_w should be 
   //ready to change the weights and biases in the network
-
-
 
 }
 
@@ -355,6 +372,13 @@ int GetNumber(VectorXd vec){
 int main(int argc, char ** argv){
   srand((unsigned int) time(0));
   
+//   MatrixXd mat=MatrixXd::Constant(3,3,1);
+//   cout<<mat<<endl;
+//   VectorXd vec=VectorXd::Constant(4,10);
+//   mat.conservativeResize(mat.rows(), mat.cols()+1);
+//   mat.col(mat.cols()-1) = vec;
+//   cout<<mat<<endl;
+
   if (argc != 4){
     cout<<"Give arguments"<<endl;
     return -1;
@@ -377,8 +401,10 @@ int main(int argc, char ** argv){
   
 
 
-  Network A({784,30,10});
+  Network A({783,30,10});
   //data epoch minisize eta
+  A.AddInputNode();
+
 
   cout<<"Training..."<<endl;
   A.SGD(trainingData,epochs,mSize,eta);
